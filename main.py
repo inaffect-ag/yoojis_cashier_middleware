@@ -38,10 +38,6 @@ async def websocket_server(websocket, path):
     topic_filter = config["MQTT"].get("topic_filter")
     topic = config["MQTT"].get("topic")
 
-    logger.info(f"MQTT credentials {username} {password}")
-    logger.info(topic)
-    logger.info(topic_filter)
-
     async for message in websocket:
 
         async with mqtt_client(
@@ -51,6 +47,12 @@ async def websocket_server(websocket, path):
             username=username,
             password=password,
         ) as client:
+
+            await client.publish(
+                "from_cashier",
+                json.dumps({"cashier": topic, "status": "ws_connected"}),
+            )
+
             async with client.filtered_messages(topic_filter) as messages:
                 logger.info("client connected")
 
@@ -58,13 +60,21 @@ async def websocket_server(websocket, path):
 
                 logger.info(f"subscribed to {topic}")
 
-                async for message in messages:
-                    payload = message.payload.decode()
-                    topic = message.topic
+                async for mqtt_message in messages:
+                    payload = mqtt_message.payload.decode()
+                    topic = mqtt_message.topic
                     logger.info(f"Received `{payload}` from `{topic}` topic")
 
-                    # immediately forward to websocket
-                    await websocket.send(payload)
+                    if "ping" in payload:
+                        await client.publish(
+                            "from_cashier",
+                            json.dumps(
+                                {"cashier": topic, "status": "ws_connected"}
+                            ),
+                        )
+                    else:
+                        # immediately forward to websocket
+                        await websocket.send(payload)
 
 
 if __name__ == "__main__":

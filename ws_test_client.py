@@ -22,4 +22,7 @@ async def test_client():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_client())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(test_client())
+
+#    asyncio.run(test_client())

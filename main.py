@@ -56,14 +56,9 @@ async def websocket_server(websocket, path):
             )
         else:
             # immediately forward to websocket
-            logger.info("forwarding")
-            # asyncio.get_event_loop().run_until_complete(websocket.send(payload))
             asyncio.run_coroutine_threadsafe(
                 websocket.send(payload), asyncio.get_running_loop()
             )
-            logger.info("done")
-            # asyncio.run(websocket.send(msg))
-            # websocket.send(payload)
 
     client.on_connect = on_connect
     client.on_message = on_message

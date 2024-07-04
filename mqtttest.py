@@ -13,16 +13,6 @@ config = ConfigParser()
 
 async def main():
 
-    # start websocket server
-
-    while True:
-        async with websockets.serve(websocket_server, "localhost", 8765):
-            print("websocket server")
-            await asyncio.Future()
-
-
-async def websocket_server(websocket, path):
-
     config.read(os.path.join(os.getcwd(), "config.cfg"))
     logger.info(config.sections())
 
@@ -37,8 +27,6 @@ async def websocket_server(websocket, path):
 
     topic_filter = config["MQTT"].get("topic_filter")
     topic = config["MQTT"].get("topic")
-
-    # async for message in websocket:
 
     async with mqtt_client(
         hostname=broker,
@@ -64,17 +52,6 @@ async def websocket_server(websocket, path):
                 payload = mqtt_message.payload.decode()
                 topic = mqtt_message.topic
                 logger.info(f"Received `{payload}` from `{topic}` topic")
-
-                if "ping" in payload:
-                    await client.publish(
-                        "from_cashier",
-                        json.dumps(
-                            {"cashier": topic, "status": "ws_connected"}
-                        ),
-                    )
-                else:
-                    # immediately forward to websocket
-                    await websocket.send(payload)
 
 
 if __name__ == "__main__":

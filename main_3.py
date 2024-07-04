@@ -6,6 +6,7 @@ from configparser import ConfigParser
 from urllib.parse import urlparse
 import os
 import websockets
+import threading
 
 logger = logging.getLogger(__name__)
 config = ConfigParser()
@@ -23,6 +24,16 @@ async def main():
 
 async def websocket_server(websocket, path):
 
+    await run_mqtt(websocket)
+    # mqtt_thread = threading.Thread(target=run_mqtt)
+    # mqtt_thread.start()
+    # mqtt_thread.join()
+
+    # async for message in websocket
+
+
+async def run_mqtt(websocket):
+
     config.read(os.path.join(os.getcwd(), "config.cfg"))
     logger.info(config.sections())
 
@@ -37,8 +48,6 @@ async def websocket_server(websocket, path):
 
     topic_filter = config["MQTT"].get("topic_filter")
     topic = config["MQTT"].get("topic")
-
-    # async for message in websocket:
 
     async with mqtt_client(
         hostname=broker,

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import json
-from asyncio_mqtt import Client as mqtt_client
+import paho.mqtt.client as mqtt
 from configparser import ConfigParser
 from urllib.parse import urlparse
 import os
@@ -12,9 +12,6 @@ config = ConfigParser()
 
 
 async def main():
-
-    # start websocket server
-
     while True:
         async with websockets.serve(websocket_server, "localhost", 8765):
             print("websocket server")
@@ -24,7 +21,6 @@ async def main():
 async def websocket_server(websocket, path):
 
     config.read(os.path.join(os.getcwd(), "config.cfg"))
-    logger.info(config.sections())
 
     # MQTT settings
     mqtturl = config["MQTT"].get("url")
@@ -35,46 +31,48 @@ async def websocket_server(websocket, path):
     username = mqtturl_parsed.username
     password = mqtturl_parsed.password
 
-    topic_filter = config["MQTT"].get("topic_filter")
     topic = config["MQTT"].get("topic")
 
-    # async for message in websocket:
+    client = mqtt.Client()
+    client.username_pw_set(username, password)
 
-    async with mqtt_client(
-        hostname=broker,
-        port=port,
-        client_id="",
-        username=username,
-        password=password,
-    ) as client:
-
-        await client.publish(
+    def on_connect(client, userdata, flags, rc):
+        print(f"Connected with result code {rc}")
+        client.publish(
             "from_cashier",
             json.dumps({"cashier": topic, "status": "ws_connected"}),
         )
+        client.subscribe(topic)
 
-        async with client.filtered_messages(topic_filter) as messages:
-            logger.info("client connected")
+    def on_message(client, userdata, msg):
+        payload = msg.payload.decode()
+        topic = msg.topic
+        logger.info(f"Received `{payload}` from `{topic}` topic")
 
-            await client.subscribe(topic)
+        if "ping" in payload:
+            client.publish(
+                "from_cashier",
+                json.dumps({"cashier": topic, "status": "ws_connected"}),
+            )
+        else:
+            # immediately forward to websocket
+            logger.info("forwarding")
+            # asyncio.get_event_loop().run_until_complete(websocket.send(payload))
+            asyncio.run_coroutine_threadsafe(
+                websocket.send(payload), asyncio.get_running_loop()
+            )
+            logger.info("done")
+            # asyncio.run(websocket.send(msg))
+            # websocket.send(payload)
 
-            logger.info(f"subscribed to {topic}")
+    client.on_connect = on_connect
+    client.on_message = on_message
 
-            async for mqtt_message in messages:
-                payload = mqtt_message.payload.decode()
-                topic = mqtt_message.topic
-                logger.info(f"Received `{payload}` from `{topic}` topic")
+    client.connect(broker, port, 60)
 
-                if "ping" in payload:
-                    await client.publish(
-                        "from_cashier",
-                        json.dumps(
-                            {"cashier": topic, "status": "ws_connected"}
-                        ),
-                    )
-                else:
-                    # immediately forward to websocket
-                    await websocket.send(payload)
+    while True:
+        client.loop()
+        await asyncio.sleep(1)
 
 
 if __name__ == "__main__":

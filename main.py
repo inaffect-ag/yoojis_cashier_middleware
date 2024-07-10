@@ -10,12 +10,16 @@ import websockets
 logger = logging.getLogger(__name__)
 config = ConfigParser()
 
+
 async def main():
-    async with websockets.serve(websocket_server, "localhost", 8765):
-        print("WebSocket server started on ws://localhost:8765")
-        await asyncio.Future()  # Run forever
+    while True:
+        async with websockets.serve(websocket_server, "localhost", 8765):
+            print("websocket server")
+            await asyncio.Future()
+
 
 async def websocket_server(websocket, path):
+
     config.read(os.path.join(os.getcwd(), "config.cfg"))
 
     # MQTT settings
@@ -32,8 +36,8 @@ async def websocket_server(websocket, path):
     client = mqtt.Client()
     client.username_pw_set(username, password)
 
-    def on_connect(client, userdata, flags, reason_code, properties=None):
-        print(f"Connected with reason code {reason_code}")
+    def on_connect(client, userdata, flags, rc):
+        print(f"Connected with result code {rc}")
         client.publish(
             "from_cashier",
             json.dumps({"cashier": topic, "status": "ws_connected"}),
@@ -60,14 +64,11 @@ async def websocket_server(websocket, path):
     client.on_message = on_message
 
     client.connect(broker, port, 60)
-    client.loop_start()
 
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except asyncio.CancelledError:
-        client.loop_stop()
-        client.disconnect()
+    while True:
+        client.loop()
+        await asyncio.sleep(1)
+
 
 if __name__ == "__main__":
     logging.basicConfig(

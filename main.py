@@ -1,79 +1,76 @@
-import asyncio
-import logging
-import json
-import paho.mqtt.client as mqtt
+import os, asyncio, websockets, requests
+
+from paho.mqtt import client as mqtt_client
 from configparser import ConfigParser
 from urllib.parse import urlparse
-import os
-import websockets
 
-logger = logging.getLogger(__name__)
+
 config = ConfigParser()
+connected_websockets = set()
 
 
-async def main():
-    while True:
-        async with websockets.serve(websocket_server, "localhost", 8765):
-            print("websocket server")
-            await asyncio.Future()
+# Read config.cfg and define the environment variables
+config.read(os.path.join(os.getcwd(), "config.cfg"))
+mqtturl_parsed = urlparse(config["MQTT"].get("url"))
+MQTT_BROKER = mqtturl_parsed.hostname
+MQTT_PORT = mqtturl_parsed.port
+MQTT_USERNAME = mqtturl_parsed.username
+MQTT_PASSWORD = mqtturl_parsed.password
+MQTT_TOPIC = config["MQTT"].get("topic")
+POST_URL = config["API"].get("url")
 
 
-async def websocket_server(websocket, path):
+def send_post_request(data):
+    try:
+        response = requests.post(POST_URL, json=data)
+        response.raise_for_status()
+        print(f"POST request successful: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"POST request failed: {e}")
 
-    config.read(os.path.join(os.getcwd(), "config.cfg"))
+async def websocket_handler(websocket, path):
+    connected_websockets.add(websocket)
+    try:
+        async for message in websocket:
+            pass
+    except websockets.ConnectionClosed:
+        pass
+    finally:
+        connected_websockets.remove(websocket)
+        send_post_request({'event': 'websocket_disconnected'})
 
-    # MQTT settings
-    mqtturl = config["MQTT"].get("url")
-    mqtturl_parsed = urlparse(mqtturl)
+async def send_to_websockets(message):
+    tasks = [ws.send(message) for ws in connected_websockets] 
+    await asyncio.gather(*tasks)
 
-    broker = mqtturl_parsed.hostname
-    port = mqtturl_parsed.port
-    username = mqtturl_parsed.username
-    password = mqtturl_parsed.password
+def on_connect(client, userdata, flags, reason_code, properties):
+    print("Connected with the MQTT Broke")
+    client.subscribe(MQTT_TOPIC)
+    print(f"Linked to the topic {MQTT_TOPIC}")
 
-    topic = config["MQTT"].get("topic")
+def on_disconnect(client, userdata, rc):
+    print("MQTT connection aborted")
+    send_post_request({'event': 'mqtt_disconnected'})
 
-    client = mqtt.Client()
-    client.username_pw_set(username, password)
+def on_message(client, userdata, msg):
+    message = msg.payload.decode('utf-8')
+    print(f"Receive message: {message}")
+    asyncio.run(send_to_websockets(message))
 
-    def on_connect(client, userdata, flags, rc):
-        print(f"Connected with result code {rc}")
-        client.publish(
-            "from_cashier",
-            json.dumps({"cashier": topic, "status": "ws_connected"}),
-        )
-        client.subscribe(topic)
-
-    def on_message(client, userdata, msg):
-        payload = msg.payload.decode()
-        topic = msg.topic
-        logger.info(f"Received `{payload}` from `{topic}` topic")
-
-        if "ping" in payload:
-            client.publish(
-                "from_cashier",
-                json.dumps({"cashier": topic, "status": "ws_connected"}),
-            )
-        else:
-            # immediately forward to websocket
-            asyncio.run_coroutine_threadsafe(
-                websocket.send(payload), asyncio.get_running_loop()
-            )
-
+def start_mqtt_client():
+    client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2)
+    client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     client.on_connect = on_connect
     client.on_message = on_message
 
-    client.connect(broker, port, 60)
+    client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    client.loop_start()
 
-    while True:
-        client.loop()
-        await asyncio.sleep(1)
-
+async def main():
+    start_mqtt_client()
+    
+    async with websockets.serve(websocket_handler, "localhost", 8765):
+        await asyncio.Future()
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())

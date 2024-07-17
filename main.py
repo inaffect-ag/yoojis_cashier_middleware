@@ -1,4 +1,5 @@
 import os, asyncio, websockets, requests
+import time
 
 from paho.mqtt import client as mqtt_client
 from configparser import ConfigParser
@@ -66,9 +67,16 @@ def start_mqtt_client():
     client.connect(MQTT_BROKER, MQTT_PORT, 60)
     client.loop_start()
 
+async def heartbeat():
+    while True:
+        req = requests.get(f'https://www.christianbachmann.ch/heartbeats/log/{MQTT_TOPIC}')
+        # print('HTTP STatus:', req.status_code)
+        await asyncio.sleep(30)    
+
 async def main():
     start_mqtt_client()
-    
+    asyncio.create_task(heartbeat())
+
     async with websockets.serve(websocket_handler, "localhost", 8765):
         await asyncio.Future()
 

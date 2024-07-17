@@ -19,6 +19,7 @@ MQTT_USERNAME = mqtturl_parsed.username
 MQTT_PASSWORD = mqtturl_parsed.password
 MQTT_TOPIC = config["MQTT"].get("topic")
 POST_URL = config["API"].get("url")
+HEARTBEAT_URL = config["API"].get("heartbeat")
 
 
 def send_post_request(data):
@@ -69,8 +70,8 @@ def start_mqtt_client():
 
 async def heartbeat():
     while True:
-        req = requests.get(f'https://www.christianbachmann.ch/heartbeats/log/{MQTT_TOPIC}')
-        # print('HTTP STatus:', req.status_code)
+        req = requests.get(f'{HEARTBEAT_URL}/{MQTT_TOPIC}')
+        print('HTTP STatus:', req.status_code)
         await asyncio.sleep(30)    
 
 async def main():
